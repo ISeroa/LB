@@ -1,0 +1,156 @@
+# 플레이어 캐릭터 1차 설계
+
+> Status: Draft
+
+## 목적과 범위
+
+LB의 플레이어 캐릭터를 멀티플레이 기반 2.5D 벨트스크롤 액션 RPG에 맞게 구현하기 위한 1차 기준을 정의한다. 참고 방향은 던전앤파이터, 던전앤드래곤, 드래곤즈 크라운이다.
+
+이번 설계 범위는 다음과 같다.
+
+- 방향키/WASD 기반의 직접 이동
+- X/Y 평면의 벨트스크롤 이동과 대각선 속도 정규화
+- +X/-X 두 방향의 캐릭터 바라보기
+- 방향 잠금과 이동 잠금의 분리
+- GAS 기반 행동 상태 관리
+- 서버 권한형 멀티플레이 구조와 최소 네트워크 검증
+- 첫 기본 공격 Ability로 이어질 입력·상태 확장 지점
+
+## 제외 범위
+
+- 클릭 이동과 NavMesh 기반 이동
+- 세션, 로비, 매치메이킹
+- 전용 서버 배포
+- 스킬 로드아웃과 런타임 스킬 교체 시스템
+- Mover, Motion Matching, Iris 도입
+- 전체 전투 시스템이나 전체 캐릭터 계층의 선행 구현
+
+기존 `ALBCharacter`, `ALBPlayerController`의 클릭 이동 및 NavMesh 코드는 Epic 템플릿 참고용으로만 유지한다. LB 신규 플레이어 구조는 해당 코드에 의존하지 않는다.
+
+## 좌표계와 이동 규칙
+
+- X축은 화면 좌우이자 스테이지의 주 진행 방향이다.
+- Y축은 화면 안쪽/바깥쪽으로 이동하는 깊이 방향이다.
+- Z축은 점프, 낙하, 띄우기 등 높이 표현에 사용한다.
+- 일반 이동은 `ACharacter`와 `CharacterMovementComponent`를 사용한다.
+- 입력 벡터는 X/Y 평면에서 정규화해 대각선 이동이 축 단독 이동보다 빨라지지 않게 한다.
+- 캐릭터는 +X 또는 -X 방향만 바라본다.
+- 마지막 유효 수평 입력의 X 부호를 기준으로 좌우 방향을 유지한다.
+- Y축 입력만 있는 동안에는 기존 좌우 방향을 유지한다.
+- `State.Movement.FacingLocked`가 활성화된 동안에는 이동 입력과 무관하게 좌우 방향을 변경하지 않는다.
+- 좌우 방향은 서버 권한을 기준으로 다른 클라이언트에도 일관되게 보여야 한다.
+
+## 클래스별 책임
+
+### `ALB_PlayerCharacter`
+
+- X/Y 이동 입력을 실제 `CharacterMovementComponent` 이동으로 변환한다.
+- 마지막 유효 수평 입력과 현재 좌우 방향을 관리한다.
+- 방향 잠금 상태를 적용한다.
+- `ALB_PlayerState`가 소유한 ASC의 Avatar 역할을 한다.
+
+### `ALB_PlayerController`
+
+- LB 전용 Enhanced Input Mapping Context를 로컬 플레이어에 등록한다.
+- `IA_Move` 등 로컬 입력을 수집해 소유 중인 `ALB_PlayerCharacter`에 전달한다.
+- 게임플레이 결과를 로컬에서 확정하지 않는다.
+
+### `ALB_PlayerState`
+
+- replicated ASC와 AttributeSet을 소유한다.
+- 리스폰 후에도 유지되어야 하는 플레이어 지속 데이터를 소유한다.
+- Ability 실행 결과와 Gameplay Effect 기반 상태의 서버 권한 경로를 유지한다.
+
+### `ULB_GasComponent`
+
+- `ALB_PlayerState`의 ASC와 AttributeSet을 `ALB_PlayerCharacter`에 연결한다.
+- 새 ASC를 만들거나 게임플레이 상태의 별도 소유자가 되지 않는다.
+- 속성 변경을 이동 및 UI가 구독할 수 있는 이벤트 경로로 연결한다.
+
+## 입력 구성
+
+첫 입력 작업은 LB 전용 `IA_Move`와 Input Mapping Context를 만든다.
+
+- `IA_Move` 값 형식은 2D Axis다.
+- 방향키와 WASD를 X/Y 입력으로 매핑한다.
+- 입력 수집은 로컬 `ALB_PlayerController`가 담당한다.
+- 캐릭터는 전달받은 입력을 X/Y 월드 이동으로 해석한다.
+- 클릭 이동용 입력 액션과 매핑에는 의존하지 않는다.
+- 이후 별도 작업에서 `IA_Attack`을 추가하고 기본 공격 Ability 1종의 활성화 입력으로 연결한다.
+
+## 공격 중 방향/이동 잠금
+
+방향 잠금과 이동 잠금은 서로 독립된 규칙으로 취급한다.
+
+- 방향 잠금은 `State.Movement.FacingLocked`로 표현한다.
+- 일반 이동 차단은 `State.Movement.Blocked`로 표현한다.
+- 첫 기본 공격은 두 태그를 모두 사용해 방향 전환과 일반 이동을 차단한다.
+- 공격 중에는 바라보는 방향을 바꾸지 않는다.
+- 향후 공격이나 스킬은 필요에 따라 방향만 잠그거나, 이동만 막거나, 둘 다 허용할 수 있어야 한다.
+- 입력 자체를 전역적으로 제거하기보다 Ability의 활성 상태와 Gameplay Tag를 기준으로 캐릭터가 각 규칙을 적용한다.
+
+## 상태 분류
+
+이동에서 자연스럽게 파생되는 상태와 권한 있는 게임플레이 상태를 구분한다.
+
+| 분류 | 상태 | 관리 방식 |
+| --- | --- | --- |
+| 애니메이션 파생 | Idle, Run, Airborne | AnimBP가 속도, 이동 방향, 공중 여부로 계산 |
+| 행동/이동 제어 | Attacking, Dodging, FacingLocked, MovementBlocked | Ability와 Gameplay Tag |
+| 지속 게임플레이 | Dead, Stunned, Invulnerable, 버프/디버프 | Gameplay Effect와 Gameplay Tag |
+
+우선 사용할 태그는 다음과 같다.
+
+- `State.Action.Attacking`
+- `State.Movement.FacingLocked`
+- `State.Movement.Blocked`
+
+이 상태들은 동시에 존재할 수 있으므로 `CurrentStateGEHandle` 하나로 모든 상태를 상호 배타적으로 교체하지 않는다. `CurrentStateGEHandle`을 유지해야 한다면 정말로 단일 상태 슬롯인 별도 개념에만 한정하고, 공격·이동 제어·피격·버프 상태에는 각각의 Ability/Gameplay Effect 수명과 태그 집계를 사용한다.
+
+## 멀티플레이 원칙
+
+- 처음부터 서버 권한형 게임플레이로 설계한다.
+- 이동은 Unreal의 `ACharacter`와 `CharacterMovementComponent` 복제 경로를 사용한다.
+- Ability 실행 가능 여부, 비용, 피해, 회복, 상태 결과는 서버가 최종 확정한다.
+- ASC와 AttributeSet은 현재 구조처럼 `ALB_PlayerState`가 소유한다.
+- `ALB_PlayerCharacter`는 ASC의 Avatar다.
+- 클라이언트는 로컬 입력 수집과 표현을 담당하며 게임플레이 결과를 임의로 확정하지 않는다.
+- 각 기능은 PIE의 Listen Server + Client 1개 환경에서 검증한다.
+- 현 단계에서는 세션, 로비, 매치메이킹, 전용 서버 배포를 구현하지 않는다.
+
+## 작은 작업 단위
+
+1. LB 전용 `IA_Move`와 Input Mapping Context를 만든다.
+2. `ALB_PlayerController`에서 입력을 수집하고 `ALB_PlayerCharacter`의 X/Y 이동으로 연결한다.
+3. 입력 벡터를 정규화해 대각선 이동 속도를 보정한다.
+4. 마지막 유효 X 입력으로 정하는 좌우 방향을 복제한다.
+5. `State.Movement.FacingLocked` 활성 중 방향 변경을 차단한다.
+6. PIE Listen Server + Client 1개 환경에서 이동과 방향을 검증한다.
+7. 후속 작업으로 `IA_Attack`과 기본 공격 Ability 1종을 구현한다.
+
+각 단계는 에디터 또는 PIE에서 독립적으로 확인 가능한 수준으로 유지한다.
+
+## PIE 검증 체크리스트
+
+- [ ] Listen Server와 Client 1개가 각각 자신의 캐릭터를 WASD/방향키로 움직일 수 있다.
+- [ ] X 입력이 화면 좌우/주 진행 방향, Y 입력이 화면 깊이 방향으로 적용된다.
+- [ ] 대각선 이동 속도가 축 단독 이동 속도보다 빨라지지 않는다.
+- [ ] +X 입력 후 캐릭터가 +X를 향하고, -X 입력 후 -X를 향한다.
+- [ ] Y축으로만 이동할 때 직전 좌우 방향이 유지된다.
+- [ ] 서버와 클라이언트에서 각 캐릭터의 좌우 방향이 동일하게 보인다.
+- [ ] `State.Movement.FacingLocked` 중 반대 X 입력을 해도 방향이 바뀌지 않는다.
+- [ ] `State.Movement.Blocked` 중 일반 이동이 적용되지 않는다.
+- [ ] 첫 기본 공격 중 방향 전환과 일반 이동이 모두 차단된다.
+- [ ] Ability 실행 가능 여부와 상태 결과가 서버에서 확정된다.
+- [ ] 리스폰 또는 PlayerState 재연결 후 Owner=`PlayerState`, Avatar=`PlayerCharacter`의 GAS Actor Info가 정상이다.
+
+## 추후 결정 사항
+
+- 좌우 방향 복제 데이터의 구체적 표현: replicated bool/enum 또는 회전 복제 활용
+- 카메라 고정 방식, 이동 영역의 Y축 폭과 경계 처리
+- 점프 도입 시 Z축 이동과 깊이 판정의 충돌 규칙
+- 공격별 `FacingLocked`/`MovementBlocked` 부여 방식과 Ability 공통 정책
+- 입력 버퍼, 콤보 전환, 캔슬 가능 구간
+- 루트 모션 또는 이동형 Ability의 서버 권한 처리 방식
+- 피격 경직, 넉백, 띄우기와 `CharacterMovementComponent`의 연동 방식
+- 근거리 프로토타입 검증 이후 원거리 캐릭터가 공유할 범위
