@@ -4,18 +4,18 @@
 
 ## 문서 구성
 
-- `Character`: 플레이어, 몬스터, 이동, 방향과 애니메이션 연동
-- `Combat`: 기본 공격, 스킬, 피해, 피격과 콤보
-- `GAS`: ASC 소유권, Attribute, Gameplay Effect와 Gameplay Tag 공통 정책
-- `Network`: 권한, 복제와 멀티플레이 검증 기준
-- `Workflow`: 빌드, PIE 테스트와 에셋 연결 같은 반복 작업 절차
+- `character`: 플레이어, 몬스터, 이동, 방향과 애니메이션 연동
+- `combat`: 기본 공격, 스킬, 피해, 피격과 콤보
+- `gas`: ASC 소유권, Attribute, Gameplay Effect와 Gameplay Tag 공통 정책
+- `network`: 권한, 복제와 멀티플레이 검증 기준
+- `workflow`: 빌드, PIE 테스트와 에셋 연결 같은 반복 작업 절차
 
 아직 문서가 없는 영역의 빈 폴더는 미리 만들지 않는다. 하나의 문서가 여러 영역에 걸치면 문서의 주된 책임을 기준으로 배치하고, 관련 문서에서 링크한다. 같은 내용을 여러 문서에 중복해 기준으로 삼지 않는다.
 
 ## 파일명 규칙
 
 - 시스템 문서 파일명은 소문자 kebab-case를 사용한다.
-- 예: `Character/player-character.md`, `Combat/basic-attack.md`
+- 예: `character/player-character.md`, `combat/basic-attack.md`
 - 공백, 날짜, `final`, `latest`, `v2` 같은 상태·버전 표현은 파일명에 사용하지 않는다.
 - 저장소 문서 색인인 `README.md`와 작성 기준인 `_template.md`는 예외다.
 
@@ -60,4 +60,4 @@
 
 ### Character
 
-- [Player Character](Character/player-character.md) — `Draft` — 2.5D 벨트스크롤 플레이어의 이동, 방향, 상태와 멀티플레이 원칙
+- [Player Character](character/player-character.md) — `Draft` — 2.5D 벨트스크롤 플레이어의 이동, 방향, 상태와 멀티플레이 원칙
